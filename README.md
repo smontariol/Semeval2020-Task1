@@ -1,10 +1,15 @@
 # Semeval_2020_Task_1
 
-Official repository for Semeval 2020 task 1 - Discovery Team system.
+Official repository for Semeval 2020 task 1 - Discovery Team system. Published results were produced in Python 3 programming environment on Linux Mint 18 Cinnamon operating system. Instructions for installation assume the usage of PyPI package manager.<br/>
+
+
+## Installation, documentation ##
+
+Install dependencies if needed: pip install -r requirements.txt
 
 ### To reproduce the results published in the paper run the code in the command line using following commands: ###
 
-#####Fine-tune language model on the SemEval corpus:<br/>
+#### Fine-tune language model on the SemEval corpus:<br/>
 
 Generate language model train and test sets:<br/>
 ```
@@ -18,7 +23,7 @@ python fine-tune_BERT.py --train_data_file pathToTrainSet --output_dir pathToOut
 
 For '--model_name_or_path' parameter, see the paper for info about which models we use for each language.
 
-#####Extract BERT embeddings:<br/>
+#### Extract BERT embeddings:<br/>
 
 Preprocess corpus:<br/>
 
@@ -34,7 +39,7 @@ python extract_embeddings.py --corpus_paths pathToPreprocessedCorpusSlicesSepara
 
 This creates a pickled file containing all contextual embeddings for all target word that is used for further procssing.<br/>
 
-#####Get results:<br/>
+#### Get results:<br/>
 
 Conduct clustering and measure semantic shift with JSD:<br/>
 
@@ -59,7 +64,7 @@ python get_period_specific_clusters.py --language language --results_file pathTo
 ```
 This script takes one of the cluster labels files generated with the calculate_semantic_change.py script as an input. Use the "--dynamic_treshold" flag if your input labels are for affinity propagation clustering.<br/>
 
-#####Extra:<br/>
+#### Extra:<br/>
 
 Filter Named entities from clusters:<br/>
 
@@ -74,4 +79,6 @@ Script for ensembling of static word2vec and contextual embeddings:<br/>
 ```
 python ensembling_script.py --language language --method_1 clusteringMethodName --input_file_method_1 pathToInputResultsCSVFile --method_2 word2vecMethodName --input_file_method_2 pathToInputWord2VecFile --output_file_path OutputCSVResultsFile
 ```
+
+#### If something is unclear, check the default arguments for each script. If you still can't make it work, feel free to contact us :).
 
