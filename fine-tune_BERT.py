@@ -760,72 +760,25 @@ def evaluate(args, model: PreTrainedModel, tokenizer: PreTrainedTokenizer, prefi
 def main():
     parser = argparse.ArgumentParser()
 
-
-    '''#parser.add_argument("--train_data_file", default='data/semeval_data/english/train.txt', type=str,
-    #                    help="The input training data file (a text file).")
-    # parser.add_argument("--train_data_file", default='data/semeval_data/latin/train.txt', type=str,
-    #                    help="The input training data file (a text file).")
-
-    parser.add_argument("--output_dir", default='models/model_english_epoch_10', type=str,
-                        help="The output directory where the model predictions and checkpoints will be written.")
-    # parser.add_argument("--output_dir", default='models/model_latin_epoch_10', type=str,
-    #                    help="The output directory where the model predictions and checkpoints will be written.")
-
-    ## Other parameters
-
-    parser.add_argument("--eval_data_file", default='data/semeval_data/english/test.txt', type=str,
-                        help="An optional input evaluation data file to evaluate the perplexity on (a text file).")
-    # parser.add_argument("--eval_data_file", default='data/semeval_data/latin/test.txt', type=str,
-    #                    help="An optional input evaluation data file to evaluate the perplexity on (a text file).")
-
-    parser.add_argument("--model_type", default="bert", type=str,
-                        help="The model architecture to be fine-tuned.")
-
-
-    parser.add_argument("--model_name_or_path", default="bert-base-uncased", type=str,
-                        help="The model checkpoint for weights initialization.")
-    # parser.add_argument("--model_name_or_path", default="bert-base-multilingual-uncased", type=str,
-    #                    help="The model checkpoint for weights initialization.")'''
-
-
-    #parser.add_argument("--train_data_file", default='data/semeval_data/swedish/train.txt', type=str,
-    #                    help="The input training data file (a text file).")
-    #parser.add_argument("--train_data_file", default='data/semeval_data/german/train.txt', type=str,
-    #                    help="The input training data file (a text file).")
-    parser.add_argument("--train_data_file", default='data/semeval_data/english/train_small.txt', type=str,
+    parser.add_argument("--train_data_file", default='data/english/train.txt', type=str,
                         help="The input training data file (a text file).")
-    #parser.add_argument("--train_data_file", default='data/semeval_data/latin/train.txt', type=str,
-    #                    help="The input training data file (a text file).")
-    #parser.add_argument("--output_dir", default='models/model_swedish', type=str,
-    #                    help="The output directory where the model predictions and checkpoints will be written.")
-    #parser.add_argument("--output_dir", default='models/model_german_cased', type=str,
-    #                    help="The output directory where the model predictions and checkpoints will be written.")
-    parser.add_argument("--output_dir", default='models/model_english_epoch_10', type=str,
-                        help="The output directory where the model predictions and checkpoints will be written.")
-    #parser.add_argument("--output_dir", default='models/model_latin_epoch_10', type=str,
-    #                    help="The output directory where the model predictions and checkpoints will be written.")
 
+    parser.add_argument("--output_dir", default='models/model_english_epoch_5', type=str,
+                        help="The output directory where the model predictions and checkpoints will be written.")
     ## Other parameters
-    #parser.add_argument("--eval_data_file", default='data/semeval_data/swedish/test.txt', type=str,
-    #                    help="An optional input evaluation data file to evaluate the perplexity on (a text file).")
-    #parser.add_argument("--eval_data_file", default='data/semeval_data/german/test.txt', type=str,
-    #                    help="An optional input evaluation data file to evaluate the perplexity on (a text file).")
-    parser.add_argument("--eval_data_file", default='data/semeval_data/english/test_small.txt', type=str,
+
+    parser.add_argument("--eval_data_file", default='data/english/test.txt', type=str,
                         help="An optional input evaluation data file to evaluate the perplexity on (a text file).")
-    #parser.add_argument("--eval_data_file", default='data/semeval_data/latin/test.txt', type=str,
-    #                    help="An optional input evaluation data file to evaluate the perplexity on (a text file).")
 
     parser.add_argument("--model_type", default="bert", type=str,
                         help="The model architecture to be fine-tuned.")
 
-    #parser.add_argument("--model_name_or_path", default="af-ai-center/bert-base-swedish-uncased", type=str,
-    #                    help="The model checkpoint for weights initialization.")
-    #parser.add_argument("--model_name_or_path", default="bert-base-german-cased", type=str,
-    #                    help="The model checkpoint for weights initialization.")
     parser.add_argument("--model_name_or_path", default="bert-base-uncased", type=str,
                         help="The model checkpoint for weights initialization.")
-    #parser.add_argument("--model_name_or_path", default="bert-base-multilingual-uncased", type=str,
-    #                    help="The model checkpoint for weights initialization.")
+
+    parser.add_argument("--swedish_vocab_path", default="data/swedish/vocab_swebert.txt", type=str,
+                        help="Path to vocabulary for Swedish tokenizer. It is only needed if you want to fine-tune the Swedish model")
+
     parser.add_argument(
         "--line_by_line",
         action="store_true",
@@ -871,7 +824,7 @@ def main():
     parser.add_argument("--do_train", action="store_true", help="Whether to run training.")
     parser.add_argument("--do_eval", action="store_true", help="Whether to run eval on the dev set.")
     parser.add_argument(
-        "--evaluate_during_training", action="store_false", help="Run evaluation during training at each logging step."
+        "--evaluate_during_training", action="store_true", help="Run evaluation during training at each logging step."
     )
 
     parser.add_argument("--per_gpu_train_batch_size", default=16, type=int, help="Batch size per GPU/CPU for training.")
@@ -889,7 +842,7 @@ def main():
     parser.add_argument("--adam_epsilon", default=1e-8, type=float, help="Epsilon for Adam optimizer.")
     parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
     parser.add_argument(
-        "--num_train_epochs", default=10.0, type=float, help="Total number of training epochs to perform."
+        "--num_train_epochs", default=5.0, type=float, help="Total number of training epochs to perform."
     )
     parser.add_argument(
         "--max_steps",
@@ -900,7 +853,7 @@ def main():
     parser.add_argument("--warmup_steps", default=0, type=int, help="Linear warmup over warmup_steps.")
 
     parser.add_argument("--logging_steps", type=int, default=100, help="Log every X updates steps.")
-    parser.add_argument("--save_steps", type=int, default=500000, help="Save checkpoint every X updates steps.")
+    parser.add_argument("--save_steps", type=int, default=10000, help="Save checkpoint every X updates steps.")
     parser.add_argument(
         "--save_total_limit",
         type=int,
@@ -937,18 +890,6 @@ def main():
     parser.add_argument("--server_ip", type=str, default="", help="For distant debugging.")
     parser.add_argument("--server_port", type=str, default="", help="For distant debugging.")
     args = parser.parse_args()
-
-    args.line_by_line = True
-    args.should_continue = False
-    args.mlm = True
-    args.do_train = True
-    args.do_eval = True
-    args.evaluate_during_training = True
-    args.eval_all_checkpoints = False
-    args.no_cuda = False
-    args.overwrite_output_dir = True
-    args.fp16 = False
-    args.overwrite_cache = True
 
 
     if args.model_type in ["bert", "roberta", "distilbert", "camembert"] and not args.mlm:
@@ -1033,7 +974,7 @@ def main():
 
     if args.model_name_or_path == "af-ai-center/bert-base-swedish-uncased":
         print('Using custom Swedish tokenizer')
-        tokenizer = BertWordPieceTokenizer("data/semeval_data/swedish/vocab_swebert.txt", lowercase=True,
+        tokenizer = BertWordPieceTokenizer(args.swedish_vocab, lowercase=True,
                                            strip_accents=False)
     elif args.model_name_or_path and args.model_name_or_path != "af-ai-center/bert-base-swedish-uncased":
         tokenizer = tokenizer_class.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
@@ -1110,7 +1051,7 @@ def main():
             tokenizer = tokenizer_class.from_pretrained(args.output_dir)
         else:
             print('Using custom Swedish tokenizer')
-            tokenizer = BertWordPieceTokenizer("data/semeval_data/swedish/vocab_swebert.txt", lowercase=True, strip_accents=False)
+            tokenizer = BertWordPieceTokenizer(args.swedish_vocab, lowercase=True, strip_accents=False)
         model.to(args.device)
 
     # Evaluation

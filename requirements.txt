@@ -1,0 +1,12 @@
+numpy==1.19.0
+pandas==1.0.5
+scipy==1.4.1
+scikit-learn==0.21.3
+torch==1.5.0
+tqdm==4.47.0
+transformers==3.0.1
+tokenizers==0.8.0rc4
+tensorboardX==2.1
+cltk==0.1.121
+spacy==2.3.0
+polyglot==16.7.4

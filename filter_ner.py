@@ -2,29 +2,22 @@ import os, sys
 from collections import defaultdict
 import pickle
 import re
+import argparse
 
 # latin
 from cltk.tag import ner
 
 #german, english
 import spacy
+from polyglot.text import Text
+
 de_nlp = spacy.load("de_core_news_sm")
 en_nlp = spacy.load('en_core_web_sm')
 
 #swedish
-from polyglot.text import Text
 
-from get_all_results import compute_divergence_from_cluster_labels
+from calculate_semantic_change import compute_divergence_from_cluster_labels
 
-TARGET_NAME_THRESHOLD = 0.8
-TOTAL_NAME_THRESHOLD = 5
-
-FILTER_SHORT = True
-FILTER_NER = True
-
-languages = ["latin", "german", "english", "swedish"]
-emb = ["concat", "averaged"]
-input_folder = sys.argv[1]
 
 def count_names_latin(target, sents):
     total_name_count = 0
@@ -73,43 +66,36 @@ def count_names_swedish(target, sents):
             target_name_count += 1
     return total_name_count, target_name_count
             
-def filter_name_clusters(cluster_to_sentence, target, l):
+def filter_name_clusters(cluster_to_sentence, target, l, target_name_threshold, total_name_threshold):
     keep_clusters = []
     radical_keep_clusters = []
     for cluster, sents in cluster_to_sentence.items():
         cluster_size = len(sents)
 
-        if FILTER_SHORT:
-            if cluster_size <= 2:
-                continue
 
-        if FILTER_NER:
-            
-	        if l == "latin":
-	            total_name_count, target_name_count =count_names_latin(target, sents)
-	        elif l == "german":
-	            total_name_count, target_name_count =count_names_german(target, sents)
-	        elif l == "english":
-	            total_name_count, target_name_count =count_names_english(target, sents)
-	        elif l == "swedish":
-	            total_name_count, target_name_count =count_names_swedish(target, sents)
-	
-	        if target_name_count / cluster_size < TARGET_NAME_THRESHOLD:
-	            keep_clusters.append(cluster)
-	        if total_name_count < cluster_size * TOTAL_NAME_THRESHOLD:
-	            radical_keep_clusters.append(cluster)
+        if cluster_size <= 2:
+            continue
 
-        else:
+        if l == "latin":
+            total_name_count, target_name_count =count_names_latin(target, sents)
+        elif l == "german":
+            total_name_count, target_name_count =count_names_german(target, sents)
+        elif l == "english":
+            total_name_count, target_name_count =count_names_english(target, sents)
+        elif l == "swedish":
+            total_name_count, target_name_count =count_names_swedish(target, sents)
+
+        if target_name_count / cluster_size < target_name_threshold:
             keep_clusters.append(cluster)
+        if total_name_count < cluster_size * total_name_threshold:
             radical_keep_clusters.append(cluster)
-
     return  keep_clusters, radical_keep_clusters
 
             
 
-def filter(label_file, sent_file, l):
-    labels = pickle.load(open(os.path.join(input_folder, label_file), 'rb'))
-    sentences = pickle.load(open(os.path.join(input_folder, sent_file), 'rb'))
+def filter(label_file, sent_file, filter_folder, l, target_name_threshold, total_name_threshold):
+    labels = pickle.load(open(label_file, 'rb'))
+    sentences = pickle.load(open(sent_file, 'rb'))
 
     print()
     print("==============================")
@@ -117,9 +103,7 @@ def filter(label_file, sent_file, l):
     print(sent_file)
     print(l)
     print()
-    
-    new_labels = {}
-        
+
     targets = list(labels.keys())
 
     filtered_jsd = {}
@@ -131,7 +115,7 @@ def filter(label_file, sent_file, l):
         for t in ['t1', 't2']:    
             for label, sent in zip(labels[target][t], sentences[target][t]):
                 cluster_to_sentence[label].append(sent)
-        keep_clusters, radical_keep_clusters = filter_name_clusters(cluster_to_sentence, target, l)
+        keep_clusters, radical_keep_clusters = filter_name_clusters(cluster_to_sentence, target, l, target_name_threshold, total_name_threshold)
 
         keep_info[target] = keep_clusters, radical_keep_clusters
         
@@ -143,7 +127,7 @@ def filter(label_file, sent_file, l):
         radical_filtered_jsd[target] = compute_divergence_from_cluster_labels(radical_keep_labels[0], radical_keep_labels[1])
         print(target, filtered_jsd[target], radical_filtered_jsd[target])
         
-    file_name_base = label_file.replace('.pkl', '')
+    file_name_base = label_file.split('/')[-1].replace('.pkl', '')
 
     info_file = os.path.join(filter_folder, file_name_base + "_keep_info.pkl")
     pickle.dump(keep_info, open(info_file, 'wb'))
@@ -155,29 +139,30 @@ def filter(label_file, sent_file, l):
         for t in filtered_jsd.keys():
             print('\t'.join([str(x) for x in [t, filtered_jsd[t], len(keep_info[t][0]), radical_filtered_jsd[t], len(keep_info[t][1])]]), file=out)
 
-def main():
-    pickles = [f for f in os.listdir(input_folder) if f.endswith(".pkl")]
-
-    sents = [p for p in pickles if p.startswith("sents")]
-    labels = [p for p in pickles if p.startswith("aff_prop_labels")] # doesn't make sense for other clustering
-
-    for label_file in labels:
-        for l in languages:
-            if l in label_file:
-                break
-        for e in emb:
-            if e in label_file:
-                break
-        for sent_file in sents:
-            if l in sent_file and e in sent_file:
-                filter(label_file, sent_file, l)
-                break
 
 
 if __name__ == "__main__":
-    # input folder should contain results from 'get_all_results_clustering_drifts.py'
-    input_folder = sys.argv[1]
-    filter_folder = input_folder.strip("/")+"_filtered"
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--language", default='english', const='all', nargs='?',
+                        help="Choose a language", choices=['english', 'latin', 'swedish', 'german'])
+    parser.add_argument("--input_sent_file", default='semeval_results/sents_english.pkl', type=str,
+                        help="Path to sentence file generated by caluclate_semantic_change_script")
+    parser.add_argument("--input_label_file", default='semeval_results/aff_prop_labels_english.pkl', type=str,
+                        help="Path to sentence file generated by caluclate_semantic_change_script")
+    parser.add_argument("--output_dir_path", default='semeval_results_filtered', type=str,
+                        help="Path to file with cluster labels")
+    parser.add_argument("--target_name_threshold", default=0.8, type=float,
+                        help="Filter cluster if target_name_threshold * 100% of target words inside are named entities.")
+    parser.add_argument("--total_name_threshold", default=5, type=int,
+                        help="Filter cluster if the number ofproper nouns is total_name_threshold times larger than the number of sentences.")
+    args = parser.parse_args()
+
+    languages = ['english', 'latin', 'swedish', 'german']
+    if args.language not in languages:
+        print("Language not valid, valid choices are: ", ", ".join(languages))
+        sys.exit()
+
+    filter_folder = args.output_dir_path
     if not os.path.exists(filter_folder):
         os.makedirs(filter_folder)
-    main()
+    filter(args.input_label_file, args.input_sent_file, filter_folder, args.language, args.target_name_threshold, args.total_name_threshold)

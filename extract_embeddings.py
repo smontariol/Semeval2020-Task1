@@ -4,10 +4,10 @@ import numpy as np
 import pickle
 import gc
 import re
-import pandas as pd
-import json
 from collections import defaultdict
 from tokenizers import (BertWordPieceTokenizer)
+import argparse
+import sys
 
 
 
@@ -39,9 +39,7 @@ def tokens_to_batches(ds, tokenizer, batch_size, max_length, target_words, lang)
     batches = []
     batch = []
     batch_counter = 0
-
     frequencies = defaultdict(int)
-
     print('Dataset: ', ds)
     counter = 0
     with open(ds, 'r', encoding='utf8') as f:
@@ -74,7 +72,6 @@ def tokens_to_batches(ds, tokenizer, batch_size, max_length, target_words, lang)
                     if lang=='swedish':
                         input_sequence = tokenized_text.tokens[i:i + max_length]
                         indexed_tokens = tokenized_text.ids[i:i + max_length]
-
                     else:
                         input_sequence = tokenized_text[i:i + max_length]
                         indexed_tokens = tokenizer.convert_tokens_to_ids(input_sequence)
@@ -96,9 +93,8 @@ def tokens_to_batches(ds, tokenizer, batch_size, max_length, target_words, lang)
     return batches
 
 
-def get_token_embeddings(batches, model, batch_size):
+def get_token_embeddings(batches, model, batch_size, gpu):
 
-    input_token_embeddings = []
     encoder_token_embeddings = []
     tokenized_text = []
     counter = 0
@@ -109,8 +105,13 @@ def get_token_embeddings(batches, model, batch_size):
             print('Generating embedding for batch: ', counter)
         lens = [len(x[0]) for x in batch]
         max_len = max(lens)
-        tokens_tensor = torch.zeros(batch_size, max_len, dtype=torch.long).cuda()
-        segments_tensors = torch.ones(batch_size, max_len, dtype=torch.long).cuda()
+        if gpu:
+            tokens_tensor = torch.zeros(batch_size, max_len, dtype=torch.long).cuda()
+            segments_tensors = torch.ones(batch_size, max_len, dtype=torch.long).cuda()
+        else:
+            tokens_tensor = torch.zeros(batch_size, max_len, dtype=torch.long)
+            segments_tensors = torch.ones(batch_size, max_len, dtype=torch.long)
+
         batch_idx = [x[0] for x in batch]
         batch_tokens = [x[1] for x in batch]
 
@@ -131,7 +132,6 @@ def get_token_embeddings(batches, model, batch_size):
 
         for batch_i in range(batch_size):
             encoder_token_embeddings_example = []
-            input_token_embeddings_example = []
             tokenized_text_example = []
 
 
@@ -151,11 +151,9 @@ def get_token_embeddings(batches, model, batch_size):
                 hidden_layers = torch.sum(torch.stack(hidden_layers)[-4:], 0).reshape(1, -1).detach().cpu().numpy()
 
                 encoder_token_embeddings_example.append(hidden_layers)
-                input_token_embeddings_example.append((input_embeddings[batch_i][token_i]).reshape(1, -1).detach().cpu().numpy())
                 tokenized_text_example.append(batch_tokens[batch_i][token_i])
 
             encoder_token_embeddings.append(encoder_token_embeddings_example)
-            input_token_embeddings.append(input_token_embeddings_example)
             tokenized_text.append(tokenized_text_example)
 
 
@@ -163,10 +161,10 @@ def get_token_embeddings(batches, model, batch_size):
         #print("Number of tokens in sequence:", len(token_embeddings))
         #print("Number of layers per token:", len(token_embeddings[0]))
 
-    return input_token_embeddings, encoder_token_embeddings, tokenized_text
+    return encoder_token_embeddings, tokenized_text
 
 
-def get_time_embeddings(embeddings_path, datasets, tokenizer, model, batch_size, max_length, lang, target_dict, concat=False):
+def get_time_embeddings(embeddings_path, datasets, tokenizer, model, batch_size, max_length, lang, target_dict, concat=False, gpu=True):
     targets = list(target_dict.keys())
     vocab_vectors = {}
 
@@ -185,17 +183,14 @@ def get_time_embeddings(embeddings_path, datasets, tokenizer, model, batch_size,
             print('Chunk ', num_chunk)
 
             #get list of embeddings and list of bpe tokens
-            input_token_embeddings, encoder_token_embeddings, tokenized_text = get_token_embeddings(batches, model, batch_size)
+            encoder_token_embeddings, tokenized_text = get_token_embeddings(batches, model, batch_size, gpu)
 
             splitted_tokens = []
             if not concat:
-                input_splitted_array = np.zeros((1, 768))
                 encoder_splitted_array = np.zeros((1, 768))
             else:
-                input_splitted_array = []
                 encoder_splitted_array = []
             prev_token = ""
-            input_prev_array = np.zeros((1, 768))
             encoder_prev_array = np.zeros((1, 768))
 
             #go through text token by token
@@ -207,7 +202,6 @@ def get_time_embeddings(embeddings_path, datasets, tokenizer, model, batch_size,
                     else:
                         context = " ".join(example).replace(" ##", "")
 
-                    input_array = input_token_embeddings[example_idx][i]
                     encoder_array = encoder_token_embeddings[example_idx][i]
 
                     #word is split into parts
@@ -218,20 +212,16 @@ def get_time_embeddings(embeddings_path, datasets, tokenizer, model, batch_size,
                             splitted_tokens.append(prev_token)
                             prev_token = ""
                             if not concat:
-                                input_splitted_array = input_prev_array
                                 encoder_splitted_array = encoder_prev_array
                             else:
-                                input_splitted_array.append(input_prev_array)
                                 encoder_splitted_array.append(encoder_prev_array)
 
 
                         #add word to splitted tokens array and add its embedding to splitted_array
                         splitted_tokens.append(token_i)
                         if not concat:
-                            input_splitted_array += input_array
                             encoder_splitted_array += encoder_array
                         else:
-                            input_splitted_array.append(input_array)
                             encoder_splitted_array.append(encoder_array)
 
                     #word is not split into parts
@@ -240,75 +230,46 @@ def get_time_embeddings(embeddings_path, datasets, tokenizer, model, batch_size,
                             #print(token_i)
                             if i == len(example) - 1 or not example[i + 1].startswith('##'):
                                 if target_dict[token_i] in vocab_vectors:
-                                    #print("In vocab: ", token_i + '_' + period, list(vocab_vectors.keys()))
                                     if 't' + period in vocab_vectors[target_dict[token_i]]:
-                                        vocab_vectors[target_dict[token_i]]['t' + period + '_input'].append(input_array.squeeze())
                                         vocab_vectors[target_dict[token_i]]['t' + period].append(encoder_array.squeeze())
                                         vocab_vectors[target_dict[token_i]]['t' + period + '_text'].append(context)
                                     else:
                                         vocab_vectors[target_dict[token_i]]['t' + period] = [encoder_array.squeeze()]
-                                        vocab_vectors[target_dict[token_i]]['t' + period + '_input'] = [input_array.squeeze()]
                                         vocab_vectors[target_dict[token_i]]['t' + period + '_text'] = [context]
                                 else:
-                                    #print("Not in vocab yet: ", token_i + '_' + period, list(vocab_vectors.keys()))
-                                    vocab_vectors[target_dict[token_i]] = {'t' + period + '_input':[input_array.squeeze()], 't' + period:[encoder_array.squeeze()], 't' + period + '_text':[context]}
-                                    #vocab_vectors[target_dict[token_i]] = {'t' + period + '_input': [input_array.squeeze()], 't' + period: [encoder_array.squeeze()]}
+                                    vocab_vectors[target_dict[token_i]] = {'t' + period:[encoder_array.squeeze()], 't' + period + '_text':[context]}
 
                         #check if there are words in splitted tokens array, calculate average embedding and add the word to the vocabulary
                         if splitted_tokens:
                             if not concat:
-                                input_sarray = input_splitted_array / len(splitted_tokens)
                                 encoder_sarray = encoder_splitted_array / len(splitted_tokens)
                             else:
-                                input_sarray = np.concatenate(input_splitted_array, axis=1)
                                 encoder_sarray = np.concatenate(encoder_splitted_array, axis=1)
                             stoken_i = "".join(splitted_tokens).replace('##', '')
 
                             if stoken_i in targets:
                                 if target_dict[stoken_i] in vocab_vectors:
-                                    #print("S In vocab: ", stoken_i + '_' + period, list(vocab_vectors.keys()))
                                     if 't' + period in vocab_vectors[target_dict[stoken_i]]:
-                                        vocab_vectors[target_dict[stoken_i]]['t' + period + '_input'].append(input_sarray.squeeze())
                                         vocab_vectors[target_dict[stoken_i]]['t' + period].append(encoder_sarray.squeeze())
                                         vocab_vectors[target_dict[stoken_i]]['t' + period + '_text'].append(context)
                                     else:
                                         vocab_vectors[target_dict[stoken_i]]['t' + period] = [encoder_sarray.squeeze()]
-                                        vocab_vectors[target_dict[stoken_i]]['t' + period + '_input'] = [input_sarray.squeeze()]
                                         vocab_vectors[target_dict[stoken_i]]['t' + period + '_text'] = [context]
-
-                                    #vocab_vectors[target_dict[stoken_i]]['t' + period + '_text'].append(context)
                                 else:
-                                    #print("S Not in vocab yet: ", stoken_i + '_' + period, list(vocab_vectors.keys()))
-                                    vocab_vectors[target_dict[stoken_i]] = {'t' + period + '_input': [input_sarray.squeeze()], 't' + period: [encoder_sarray.squeeze()], 't' + period + '_text': [context]}
-                                    #vocab_vectors[target_dict[stoken_i]] = {'t' + period + '_input': [input_sarray.squeeze()], 't' + period: [encoder_sarray.squeeze()]}
+                                    vocab_vectors[target_dict[stoken_i]] = {'t' + period: [encoder_sarray.squeeze()], 't' + period + '_text': [context]}
 
                             splitted_tokens = []
                             if not concat:
-                                input_splitted_array = np.zeros((1, 768))
                                 encoder_splitted_array = np.zeros((1, 768))
                             else:
-                                input_splitted_array = []
                                 encoder_splitted_array = []
-
-                        input_prev_array = input_array
                         encoder_prev_array = encoder_array
                         prev_token = token_i
 
-            del input_token_embeddings
             del encoder_token_embeddings
             del tokenized_text
             del batches
             gc.collect()
-
-            '''for k, v in vocab_vectors.items():
-                print(k)
-                input = v[0]
-                encoder = v[1]
-                context = v[2]
-                print(len(input))
-                print(len(encoder))
-                print(len(context))
-                print(context[0])'''
 
         print('Sentence embeddings generated.')
 
@@ -319,101 +280,75 @@ def get_time_embeddings(embeddings_path, datasets, tokenizer, model, batch_size,
 
     gc.collect()
 
-
-
-
 if __name__ == '__main__':
-    batch_size = 8
-    max_length = 256
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--corpus_paths", default='data/english/english_preprocessed_1.txt;data/english/english_preprocessed_2.txt', type=str,
+                        help="Paths to all corpus time slices separated by ';'.")
+    parser.add_argument("--target_path", default='data/english/targets.txt', type=str,
+                        help="Path to target file")
+    parser.add_argument("--language", default='english', const='all', nargs='?',
+                        help="Choose a language", choices=['english', 'latin', 'swedish', 'german'])
+    parser.add_argument("--batch_size", default=8, type=int, help="Batch size.")
+    parser.add_argument("--max_sequence_length", default=256, type=int)
+    parser.add_argument("--gpu", action="store_true", help="Use gpu.")
+    parser.add_argument("--concat", action="store_true", help="Concat byte pairs to derive embedding for entire word. If False, byte pairs are averaged.")
+    parser.add_argument("--path_to_fine_tuned_model", default='', type=str,
+                        help="Path to fine-tuned model. If empty, pretrained model is used")
+    parser.add_argument("--embeddings_path", default='embeddings_english.pickle', type=str,
+                        help="Path to output pickle file containing embeddings.")
 
-    data_folder = 'data/semeval_data/'
+    parser.add_argument("--swedish_vocab_path", default="data/swedish/vocab_swebert.txt", type=str,
+                        help="Path to vocabulary for Swedish tokenizer. It is only needed if you want to fine-tune the Swedish model")
+    args = parser.parse_args()
 
-    langs = ['english', 'latin', 'german', 'swedish']
-    concats = [True, False]
-    fine_tuned = True
+    batch_size = args.batch_size
+    max_length = args.max_sequence_length
+    concat = args.concat
+    lang = args.language
+    languages = ['english', 'latin', 'swedish', 'german']
+    if lang not in languages:
+        print("Language not valid, valid choices are: ", ", ".join(languages))
+        sys.exit()
+    datasets = args.corpus_paths.split(';')
+    if len(args.path_to_fine_tuned_model) > 0:
+        fine_tuned=True
+    else:
+        fine_tuned=False
 
-    for lang in langs:
-        for concat in concats:
-            if lang in ['latin', 'english']:
-                datasets = [data_folder + lang + '/' + lang + '_clean_1.txt',
-                            data_folder + lang + '/' + lang + '_clean_2.txt',]
-            else:
-                datasets = [data_folder + lang + '/' + lang + '_1.txt',
-                            data_folder + lang + '/' + lang + '_2.txt', ]
+    if lang == 'swedish':
+        tokenizer = BertWordPieceTokenizer(args.swedish_vocab_path, lowercase=True, strip_accents=False)
+        if fine_tuned:
+            state_dict = torch.load(args.path_to_fine_tuned_model)
+            model = BertModel.from_pretrained('af-ai-center/bert-base-swedish-uncased', state_dict=state_dict, output_hidden_states=True)
+        else:
+            model = BertModel.from_pretrained('af-ai-center/bert-base-swedish-uncased', output_hidden_states=True)
+    elif lang == 'german':
+        tokenizer = BertTokenizer.from_pretrained('bert-base-german-cased')
+        if fine_tuned:
+            state_dict = torch.load(args.path_to_fine_tuned_model)
+            model = BertModel.from_pretrained('bert-base-german-cased', state_dict=state_dict, output_hidden_states=True)
+        else:
+            model = BertModel.from_pretrained('bert-base-german-cased', output_hidden_states=True)
+    elif lang == 'english':
+        tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', do_lower_case=True)
+        if fine_tuned:
+            state_dict = torch.load(args.path_to_fine_tuned_model)
+            model = BertModel.from_pretrained('bert-base-uncased', state_dict=state_dict, output_hidden_states=True)
+        else:
+            model = BertModel.from_pretrained('bert-base-uncased', output_hidden_states=True)
 
+    elif lang == 'latin':
+        tokenizer = BertTokenizer.from_pretrained('bert-base-multilingual-uncased', do_lower_case=True)
+        if fine_tuned:
+            state_dict = torch.load(args.path_to_fine_tuned_model)
+            model = BertModel.from_pretrained('bert-base-multilingual-uncased', state_dict=state_dict, output_hidden_states=True)
+        else:
+            model = BertModel.from_pretrained('bert-base-multilingual-uncased', output_hidden_states=True)
+    if args.gpu:
+        model.cuda()
+    model.eval()
 
-            if lang == 'swedish':
-                tokenizer = BertWordPieceTokenizer("data/semeval_data/swedish/vocab_swebert.txt", lowercase=True, strip_accents=False)
-                if fine_tuned:
-                    state_dict = torch.load("models/model_swedish/epoch_5/pytorch_model.bin")
-                    model = BertModel.from_pretrained('af-ai-center/bert-base-swedish-uncased', state_dict=state_dict, output_hidden_states=True)
-                    if concat:
-                        embeddings_path = 'embeddings/swedish_5_epochs_concat.pickle'
-                    else:
-                        embeddings_path = 'embeddings/swedish_5_epochs.pickle'
-                else:
-                    model = BertModel.from_pretrained('af-ai-center/bert-base-swedish-uncased', output_hidden_states=True)
-                    if concat:
-                        embeddings_path = 'embeddings/swedish_pretrained_concat.pickle'
-                    else:
-                        embeddings_path = 'embeddings/swedish_pretrained.pickle'
-            elif lang == 'german':
-                tokenizer = BertTokenizer.from_pretrained('bert-base-german-cased')
-                if fine_tuned:
-                    state_dict = torch.load("models/model_german_cased/epoch_5/pytorch_model.bin")
-                    model = BertModel.from_pretrained('bert-base-german-cased', state_dict=state_dict, output_hidden_states=True)
-                    if concat:
-                        embeddings_path = 'embeddings/german_5_epochs_concat.pickle'
-                    else:
-                        embeddings_path = 'embeddings/german_5_epochs.pickle'
-                else:
-                    model = BertModel.from_pretrained('bert-base-german-cased', output_hidden_states=True)
-                    if concat:
-                        embeddings_path = 'embeddings/german_pretrained_concat.pickle'
-                    else:
-                        embeddings_path = 'embeddings/german_pretrained.pickle'
-
-            elif lang == 'english':
-                tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', do_lower_case=True)
-                if fine_tuned:
-                    state_dict = torch.load("models/model_english_epoch_8/epoch_5/pytorch_model.bin")
-                    model = BertModel.from_pretrained('bert-base-uncased', state_dict=state_dict, output_hidden_states=True)
-                    if concat:
-                        embeddings_path = 'embeddings/english_5_epochs_concat.pickle'
-                    else:
-                        embeddings_path = 'embeddings/english_5_epochs.pickle'
-                else:
-                    model = BertModel.from_pretrained('bert-base-uncased', output_hidden_states=True)
-                    if concat:
-                        embeddings_path = 'embeddings/english_pretrained_concat.pickle'
-                    else:
-                        embeddings_path = 'embeddings/english_pretrained.pickle'
-
-            elif lang == 'latin':
-                tokenizer = BertTokenizer.from_pretrained('bert-base-multilingual-uncased', do_lower_case=True)
-                if fine_tuned:
-                    state_dict = torch.load("models/model_latin/epoch_5/pytorch_model.bin")
-                    model = BertModel.from_pretrained('bert-base-multilingual-uncased', state_dict=state_dict, output_hidden_states=True)
-                    if concat:
-                        embeddings_path = 'embeddings/latin_5_epochs_concat.pickle'
-                    else:
-                        embeddings_path = 'embeddings/latin_5_epochs.pickle'
-                else:
-                    model = BertModel.from_pretrained('bert-base-multilingual-uncased', output_hidden_states=True)
-                    if concat:
-                        embeddings_path = 'embeddings/latin_pretrained_concat.pickle'
-                    else:
-                        embeddings_path = 'embeddings/latin_pretrained.pickle'
-
-
-            model.cuda()
-            model.eval()
-
-            target_dict = get_targets(data_folder + lang + '/targets.txt', lang)
-
-
-            #print(target_dict)
-
-            get_time_embeddings(embeddings_path, datasets, tokenizer, model, batch_size, max_length, lang, target_dict=target_dict, concat=concat)
+    target_dict = get_targets(args.target_path, lang)
+    get_time_embeddings(args.embeddings_path, datasets, tokenizer, model, batch_size, max_length, lang, target_dict=target_dict, concat=concat, gpu=args.gpu)
 
 

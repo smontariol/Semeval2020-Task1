@@ -1,33 +1,46 @@
-from scipy.stats import entropy
-import numpy as np
-import csv
-import re
-import os
-import pickle
 import pandas as pd
-import numpy as np
-from sklearn.metrics.pairwise import cosine_similarity
-from scipy.stats import spearmanr
-from scipy.stats import pearsonr
+import argparse
+import os
+import sys
 
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--language", default='english', const='all', nargs='?',
+                        help="Choose a language", choices=['english', 'latin', 'swedish', 'german'])
+    parser.add_argument("--results_file", default="semeval_results/results_english.csv", type=str,
+                        help="Path to csv file with results")
+    parser.add_argument("--method", default='aff_prop', type=str,
+                        help="CLustering method for which to write results-should match a column in the results file")
+    parser.add_argument("--target_path", default='data/english/targets.txt', type=str,
+                        help="Path to target files")
 
-languages = ['english', 'german', 'latin', 'swedish']
-thresholds = {'english': 0.3,
-              'german': 0.43,
-              'latin': 0.4,
-              'swedish':0.4
-              }
-method_name = 'aff_prop'
-for lang in languages:
+    args = parser.parse_args()
+    thresholds = {'english': 0.3,
+                  'german': 0.43,
+                  'latin': 0.4,
+                  'swedish':0.4
+                  }
+    method_name = args.method
+    lang = args.language
+    languages = ['english', 'latin', 'swedish', 'german']
+    methods = ['aff_prop', 'kmeans_5', 'kmeans_7', 'averaging']
+    if method_name not in methods:
+        print("Method not valid, valid choices are: ", ", ".join(methods))
+        sys.exit()
+    if lang not in languages:
+        print("Language not valid, valid choices are: ", ", ".join(languages))
+        sys.exit()
     print("Language:", lang.upper())
 
-    clustering_file = "semeval_results/results_" + lang + "_fine_tuned_concat.csv"
+    clustering_file = args.results_file
     clustering_df = pd.read_csv(clustering_file, sep="\t")
-    target_file = "semeval_targets/"+lang+".txt"
+    target_file = args.target_path
     target_words = open(target_file,'r').readlines()
     target_words = [t.strip() for t in target_words]
 
     thresh = thresholds[lang]
+    if not os.path.exists("answer/task1/"):
+        os.makedirs("answer/task1/")
     outfilename1 = "answer/task1/" + lang  + ".txt"
     outfile1 = open(outfilename1, 'w', encoding='utf-8')
     for i,word in enumerate(target_words):
@@ -39,6 +52,8 @@ for lang in languages:
             outfile1.write("\n")
     print("Done writing", outfilename1,"!")
 
+    if not os.path.exists("answer/task2/"):
+        os.makedirs("answer/task2/")
     outfilename2 = "answer/task2/" + lang  + ".txt"
     outfile2 = open(outfilename2, 'w', encoding='utf-8')
     for i,word in enumerate(target_words):
