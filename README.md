@@ -37,7 +37,7 @@ Extract embeddings from the preprocessed corpus in .txt format:<br/>
 python extract_embeddings.py --corpus_paths pathToPreprocessedCorpusSlicesSeparatedBy';' --target_path pathToSemEvalTargetFile --language language --path_to_fine_tuned_model pathToFineTunedModel --embeddings_path pathToOutputEmbeddingFile --concat 
 ```
 
-This creates a pickled file containing all contextual embeddings for all target word that is used for further procssing.<br/>
+This creates a pickled file containing all contextual embeddings for all target words.<br/>
 
 #### Get results:<br/>
 
