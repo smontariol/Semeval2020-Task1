@@ -47,7 +47,7 @@ Conduct clustering and measure semantic shift with JSD:<br/>
 python calculate_semantic_change.py --language language --embeddings_path pathToInputEmbeddingFile --semeval_results pathToOutputResultsDir
 ```
 
-This script takes the pickled embedding file as an input and creates several files, a csv file containing JSD scores for all clustering methods for each target word, a files containing cluster labels for each embedding , files containing cluster centroids and a file. containing sentences for each embedding.<br/>
+This script takes the pickled embedding file as an input and creates several files, a csv file containing JSD scores for all clustering methods for each target word, files containing cluster labels for each embedding , files containing cluster centroids and a file containing context (sentence) mapped to each embedding.<br/>
 
 Generate SemEval submission files for task 1 (binary classification using stopword tresholding method) and task 2 (ranking) using a specific clustering method:<br/>
 
