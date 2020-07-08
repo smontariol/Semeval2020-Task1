@@ -80,5 +80,8 @@ Script for ensembling of static word2vec and contextual embeddings:<br/>
 python ensembling_script.py --language language --method_1 clusteringMethodName --input_file_method_1 pathToInputResultsCSVFile --method_2 word2vecMethodName --input_file_method_2 pathToInputWord2VecFile --output_file_path OutputCSVResultsFile
 ```
 
+This script takes the CSV file generated with the calculate_semantic_change.py and the name of the column (results for clustering) in the CSV file as an input, and also the CSV file generated with the code generated
+by using the code published at https://github.com/Garrafao/LSCDetection (see their readme on how to produce the CSV file with the measures/cd.py script) and the name of the column in that CSV file. 
+
 #### If something is unclear, check the default arguments for each script. If you still can't make it work, feel free to contact us :).
 
